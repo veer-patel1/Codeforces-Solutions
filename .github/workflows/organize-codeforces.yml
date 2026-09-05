@@ -85,7 +85,6 @@ jobs:
                   topics = api.get('tags', [])
               return contest, idx, name, rating, topics
 
-          # Find CFPusher-style problem directories/files. Existing organized folders are left alone.
           problems = {}
 
           for readme in ROOT.rglob('README.md'):
@@ -100,8 +99,8 @@ jobs:
               source = readme.parent
               problems[f'{contest}/{idx}'] = (source, contest, idx, name, int(rating), topics)
 
-          # Handle malformed CFPusher entries where the solution was created directly as a file,
-          # e.g. contest/A - Title without a README.
+          # Handle malformed CFPusher entries where a solution exists directly as a file
+          # under a numeric contest directory and has no README.
           for contest_dir in ROOT.iterdir():
               if not contest_dir.is_dir() or not contest_dir.name.isdigit():
                   continue
@@ -125,9 +124,8 @@ jobs:
               if not rating:
                   continue
               destination = ROOT / str(rating) / f'{contest}{idx} - {name}'
-              destination.parent.mkdir(parents=True, exist_ok=True)
+              destination.mkdir(parents=True, exist_ok=True)
 
-              # Already in the desired location: do not move it.
               try:
                   if source.resolve() == destination.resolve():
                       continue
@@ -152,15 +150,14 @@ jobs:
                   except OSError:
                       pass
               else:
-                  target_name = 'solution.cpp' if source.suffix == '' else source.name
-                  target = destination / target_name
+                  target = destination / ('solution.cpp' if source.suffix == '' else source.name)
                   if target.exists():
                       target.unlink()
                   shutil.copy2(source, target)
                   source.unlink()
               moved += 1
 
-          # Remove now-empty contest directories left behind by CFPusher.
+          # Remove empty contest directories left by CFPusher.
           for p in sorted(ROOT.iterdir(), key=lambda x: len(x.parts), reverse=True):
               if p.is_dir() and p.name.isdigit():
                   try:
@@ -168,26 +165,22 @@ jobs:
                   except StopIteration:
                       p.rmdir()
 
-          # Re-scan the final rating-based structure for README statistics.
           entries = []
           for rating_dir in ROOT.iterdir():
               if not rating_dir.is_dir() or not rating_dir.name.isdigit():
                   continue
-              try:
-                  rating = int(rating_dir.name)
-              except ValueError:
-                  continue
+              rating = int(rating_dir.name)
               for problem_dir in rating_dir.iterdir():
                   if not problem_dir.is_dir():
                       continue
                   m = folder_re.match(problem_dir.name)
-                  readme = problem_dir / 'README.md'
                   solution = problem_dir / 'solution.cpp'
                   if not m or not solution.exists():
                       continue
                   contest, idx, fallback_name = m.group(1), m.group(2), m.group(3)
                   topics = []
                   actual_name = fallback_name
+                  readme = problem_dir / 'README.md'
                   if readme.exists():
                       meta = metadata_from_readme(readme)
                       if meta:
@@ -251,15 +244,11 @@ jobs:
                   cf_url = f'https://codeforces.com/contest/{e["contest"]}/problem/{e["index"]}'
                   title = f'{e["contest"]}{e["index"]} — {e["name"]}'
                   topic_text = ', '.join(e['topics']) if e['topics'] else '—'
-                  lines.append(f'| [{title}]({cf_url}) | {topic_text} | [solution]({sol_url}) · [problem README]({readme_url}) |')
+                  readme_link = f'[problem README]({readme_url})' if (e['dir'] / 'README.md').exists() else '—'
+                  lines.append(f'| [{title}]({cf_url}) | {topic_text} | [solution]({sol_url}) · {readme_link} |')
               lines.append('')
 
-          lines += [
-              '---',
-              '',
-              '_Updated automatically by GitHub Actions._',
-              ''
-          ]
+          lines += ['---', '', '_Updated automatically by GitHub Actions._', '']
           (ROOT / 'README.md').write_text('\n'.join(lines), encoding='utf-8')
           print(f'Found {len(entries)} problems; moved/merged {moved} source entries.')
           PY
