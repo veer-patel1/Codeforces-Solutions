@@ -1,0 +1,278 @@
+name: Organize Codeforces Solutions
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 18 * * 0'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: codeforces-organizer
+  cancel-in-progress: false
+
+jobs:
+  organize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Organize solutions and rebuild README
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import html
+          import os
+          import re
+          import shutil
+          import urllib.parse
+          import urllib.request
+          from collections import Counter, defaultdict
+          from pathlib import Path
+
+          ROOT = Path('.')
+          API = 'https://codeforces.com/api/problemset.problems'
+
+          def cf_data():
+              req = urllib.request.Request(API, headers={'User-Agent': 'Codeforces-Repo-Organizer/1.0'})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  data = __import__('json').load(r)
+              if data.get('status') != 'OK':
+                  raise RuntimeError('Codeforces API did not return OK')
+              return {f"{p['contestId']}/{p['index']}": p for p in data['result']['problems']}
+
+          cf = cf_data()
+
+          url_re = re.compile(r'https?://codeforces\.com/(?:contest|problemset/problem)/(\d+)(?:/problem/)?([A-Za-z0-9]+)')
+          h2_re = re.compile(r'<h2[^>]*>.*?\d+([A-Za-z0-9]+)\s*[—-]\s*(.*?)</a>', re.I | re.S)
+          rating_re = re.compile(r'\*\*Difficulty\*\*\s*\|\s*(\d+)')
+          topics_re = re.compile(r'## Topics\s*\n((?:`[^`]+`\s*)+)', re.I)
+          folder_re = re.compile(r'^(\d+)([A-Za-z][A-Za-z0-9]*)\s*-\s*(.+)$')
+
+          def read_text(p):
+              try:
+                  return p.read_text(encoding='utf-8', errors='ignore')
+              except Exception:
+                  return ''
+
+          def metadata_from_readme(p):
+              text = read_text(p)
+              m = url_re.search(text)
+              if not m:
+                  return None
+              contest, idx = m.group(1), m.group(2)
+              rating_m = rating_re.search(text)
+              rating = int(rating_m.group(1)) if rating_m else None
+              topics_m = topics_re.search(text)
+              topics = re.findall(r'`([^`]+)`', topics_m.group(1)) if topics_m else []
+              api = cf.get(f'{contest}/{idx}')
+              name = api.get('name') if api else None
+              if not name:
+                  hm = h2_re.search(text)
+                  name = html.unescape(hm.group(2)).strip() if hm else None
+              if not name:
+                  name = f'Problem {idx}'
+              if rating is None and api:
+                  rating = api.get('rating')
+              if not topics and api:
+                  topics = api.get('tags', [])
+              return contest, idx, name, rating, topics
+
+          # Find CFPusher-style problem directories/files. Existing organized folders are left alone.
+          problems = {}
+
+          for readme in ROOT.rglob('README.md'):
+              if str(readme).startswith('.git/') or readme == ROOT / 'README.md':
+                  continue
+              meta = metadata_from_readme(readme)
+              if not meta:
+                  continue
+              contest, idx, name, rating, topics = meta
+              if not rating:
+                  continue
+              source = readme.parent
+              problems[f'{contest}/{idx}'] = (source, contest, idx, name, int(rating), topics)
+
+          # Handle malformed CFPusher entries where the solution was created directly as a file,
+          # e.g. contest/A - Title without a README.
+          for contest_dir in ROOT.iterdir():
+              if not contest_dir.is_dir() or not contest_dir.name.isdigit():
+                  continue
+              contest = contest_dir.name
+              for item in contest_dir.iterdir():
+                  if not item.is_file() or item.name == 'README.md':
+                      continue
+                  m = re.match(r'^([A-Za-z][A-Za-z0-9]*)\s*-\s*(.+)$', item.name)
+                  if not m:
+                      continue
+                  idx, fallback_name = m.group(1), m.group(2)
+                  key = f'{contest}/{idx}'
+                  api = cf.get(key)
+                  if not api:
+                      continue
+                  problems.setdefault(key, (item, contest, idx, api.get('name') or fallback_name,
+                                            int(api.get('rating') or 0), api.get('tags', [])))
+
+          moved = 0
+          for key, (source, contest, idx, name, rating, topics) in sorted(problems.items()):
+              if not rating:
+                  continue
+              destination = ROOT / str(rating) / f'{contest}{idx} - {name}'
+              destination.parent.mkdir(parents=True, exist_ok=True)
+
+              # Already in the desired location: do not move it.
+              try:
+                  if source.resolve() == destination.resolve():
+                      continue
+              except FileNotFoundError:
+                  pass
+
+              if source.is_dir():
+                  for child in list(source.iterdir()):
+                      target = destination / child.name
+                      if child.is_dir():
+                          if target.exists():
+                              shutil.rmtree(target)
+                          shutil.copytree(child, target)
+                          shutil.rmtree(child)
+                      else:
+                          if target.exists():
+                              target.unlink()
+                          shutil.copy2(child, target)
+                          child.unlink()
+                  try:
+                      source.rmdir()
+                  except OSError:
+                      pass
+              else:
+                  target_name = 'solution.cpp' if source.suffix == '' else source.name
+                  target = destination / target_name
+                  if target.exists():
+                      target.unlink()
+                  shutil.copy2(source, target)
+                  source.unlink()
+              moved += 1
+
+          # Remove now-empty contest directories left behind by CFPusher.
+          for p in sorted(ROOT.iterdir(), key=lambda x: len(x.parts), reverse=True):
+              if p.is_dir() and p.name.isdigit():
+                  try:
+                      next(p.iterdir())
+                  except StopIteration:
+                      p.rmdir()
+
+          # Re-scan the final rating-based structure for README statistics.
+          entries = []
+          for rating_dir in ROOT.iterdir():
+              if not rating_dir.is_dir() or not rating_dir.name.isdigit():
+                  continue
+              try:
+                  rating = int(rating_dir.name)
+              except ValueError:
+                  continue
+              for problem_dir in rating_dir.iterdir():
+                  if not problem_dir.is_dir():
+                      continue
+                  m = folder_re.match(problem_dir.name)
+                  readme = problem_dir / 'README.md'
+                  solution = problem_dir / 'solution.cpp'
+                  if not m or not solution.exists():
+                      continue
+                  contest, idx, fallback_name = m.group(1), m.group(2), m.group(3)
+                  topics = []
+                  actual_name = fallback_name
+                  if readme.exists():
+                      meta = metadata_from_readme(readme)
+                      if meta:
+                          _, _, actual_name, _, topics = meta
+                  api = cf.get(f'{contest}/{idx}')
+                  if api:
+                      actual_name = api.get('name') or actual_name
+                      if not topics:
+                          topics = api.get('tags', [])
+                  entries.append({
+                      'rating': rating,
+                      'contest': int(contest),
+                      'index': idx,
+                      'name': actual_name,
+                      'topics': sorted(set(topics)),
+                      'dir': problem_dir,
+                  })
+
+          entries.sort(key=lambda e: (e['rating'], e['contest'], e['index']))
+          topic_counts = Counter(t for e in entries for t in e['topics'])
+          rating_counts = Counter(e['rating'] for e in entries)
+
+          lines = [
+              '# Codeforces Solutions',
+              '',
+              '> **Veer Patel**',
+              '',
+              'Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; GitHub Actions handles organization and statistics.',
+              '',
+              '## 📊 Stats',
+              '',
+              '| Metric | Count |',
+              '|---|---:|',
+              f'| Total Solved | {len(entries)} |',
+              f'| Topics Covered | {len(topic_counts)} |',
+              '',
+              '## ⭐ Rating Breakdown',
+              '',
+              '| Rating | Problems |',
+              '|---:|---:|',
+          ]
+          for r in sorted(rating_counts):
+              lines.append(f'| {r} | {rating_counts[r]} |')
+
+          lines += ['', '## 🏷️ Topics', '', '| Topic | Problems |', '|---|---:|']
+          for topic, count in sorted(topic_counts.items(), key=lambda x: (-x[1], x[0])):
+              lines.append(f'| {topic} | {count} |')
+
+          lines += ['', '## 🧩 Problems', '']
+          by_rating = defaultdict(list)
+          for e in entries:
+              by_rating[e['rating']].append(e)
+
+          for rating in sorted(by_rating):
+              lines += [f'### {rating}', '', '| Problem | Topics | Solution |', '|---|---|---|']
+              for e in by_rating[rating]:
+                  rel_solution = (e['dir'] / 'solution.cpp').relative_to(ROOT).as_posix()
+                  rel_readme = (e['dir'] / 'README.md').relative_to(ROOT).as_posix()
+                  sol_url = urllib.parse.quote(rel_solution, safe='/')
+                  readme_url = urllib.parse.quote(rel_readme, safe='/')
+                  cf_url = f'https://codeforces.com/contest/{e["contest"]}/problem/{e["index"]}'
+                  title = f'{e["contest"]}{e["index"]} — {e["name"]}'
+                  topic_text = ', '.join(e['topics']) if e['topics'] else '—'
+                  lines.append(f'| [{title}]({cf_url}) | {topic_text} | [solution]({sol_url}) · [problem README]({readme_url}) |')
+              lines.append('')
+
+          lines += [
+              '---',
+              '',
+              '_Updated automatically by GitHub Actions._',
+              ''
+          ]
+          (ROOT / 'README.md').write_text('\n'.join(lines), encoding='utf-8')
+          print(f'Found {len(entries)} problems; moved/merged {moved} source entries.')
+          PY
+
+      - name: Commit organization changes
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No organization changes needed.'
+            exit 0
+          fi
+          git commit -m 'chore: organize Codeforces solutions'
+          git push origin HEAD:main
