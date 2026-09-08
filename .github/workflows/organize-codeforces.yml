@@ -24,16 +24,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Organize solutions and rebuild README
+      - name: Organize solutions, remove duplicates, and rebuild README
         shell: bash
         run: |
           python3 <<'PY'
           import html
-          import os
           import re
           import shutil
           import urllib.parse
           import urllib.request
+          import json
+          import subprocess
           from collections import Counter, defaultdict
           from pathlib import Path
 
@@ -41,20 +42,25 @@ jobs:
           API = 'https://codeforces.com/api/problemset.problems'
 
           def cf_data():
-              req = urllib.request.Request(API, headers={'User-Agent': 'Codeforces-Repo-Organizer/1.0'})
+              req = urllib.request.Request(
+                  API,
+                  headers={'User-Agent': 'Codeforces-Repo-Organizer/2.0'}
+              )
               with urllib.request.urlopen(req, timeout=30) as r:
-                  data = __import__('json').load(r)
+                  data = json.load(r)
               if data.get('status') != 'OK':
                   raise RuntimeError('Codeforces API did not return OK')
               return {f"{p['contestId']}/{p['index']}": p for p in data['result']['problems']}
 
           cf = cf_data()
 
-          url_re = re.compile(r'https?://codeforces\.com/(?:contest|problemset/problem)/(\d+)(?:/problem/)?([A-Za-z0-9]+)')
-          h2_re = re.compile(r'<h2[^>]*>.*?\d+([A-Za-z0-9]+)\s*[—-]\s*(.*?)</a>', re.I | re.S)
-          rating_re = re.compile(r'\*\*Difficulty\*\*\s*\|\s*(\d+)')
-          topics_re = re.compile(r'## Topics\s*\n((?:`[^`]+`\s*)+)', re.I)
-          folder_re = re.compile(r'^(\d+)([A-Za-z][A-Za-z0-9]*)\s*-\s*(.+)$')
+          url_re = re.compile(
+              r'https?://codeforces\\.com/(?:contest/|problemset/problem/)(\\d+)/(?:problem/)?([A-Za-z0-9]+)',
+              re.I
+          )
+          rating_re = re.compile(r'\\*\\*Difficulty\\*\\*\\s*\\|\\s*(\\d+)', re.I)
+          topics_re = re.compile(r'## Topics\\s*\\n((?:`[^`]+`\\s*)+)', re.I)
+          folder_re = re.compile(r'^(\\d+)([A-Za-z][A-Za-z0-9]*)\\s*-\\s*(.+)$')
 
           def read_text(p):
               try:
@@ -62,45 +68,77 @@ jobs:
               except Exception:
                   return ''
 
+          def git_last_change(path):
+              """Return the newest commit timestamp that touched this path."""
+              try:
+                  result = subprocess.run(
+                      ['git', 'log', '-1', '--format=%ct', '--', str(path)],
+                      text=True,
+                      capture_output=True,
+                      check=False,
+                  )
+                  value = result.stdout.strip()
+                  return int(value) if value else 0
+              except Exception:
+                  return 0
+
           def metadata_from_readme(p):
               text = read_text(p)
               m = url_re.search(text)
               if not m:
                   return None
+
               contest, idx = m.group(1), m.group(2)
+              key = f'{contest}/{idx}'
               rating_m = rating_re.search(text)
               rating = int(rating_m.group(1)) if rating_m else None
               topics_m = topics_re.search(text)
               topics = re.findall(r'`([^`]+)`', topics_m.group(1)) if topics_m else []
-              api = cf.get(f'{contest}/{idx}')
+
+              api = cf.get(key)
               name = api.get('name') if api else None
               if not name:
-                  hm = h2_re.search(text)
-                  name = html.unescape(hm.group(2)).strip() if hm else None
+                  # CFPusher's problem title is also present in the first heading.
+                  heading = re.search(r'<h2[^>]*>.*?—\\s*(.*?)</a>', text, re.I | re.S)
+                  name = html.unescape(heading.group(1)).strip() if heading else None
+
               if not name:
                   name = f'Problem {idx}'
               if rating is None and api:
                   rating = api.get('rating')
               if not topics and api:
                   topics = api.get('tags', [])
-              return contest, idx, name, rating, topics
 
-          problems = {}
+              return {
+                  'key': key,
+                  'contest': contest,
+                  'index': idx,
+                  'name': name,
+                  'rating': int(rating) if rating else None,
+                  'topics': sorted(set(topics)),
+              }
+
+          # Collect every CFPusher-style solution source first.
+          # This intentionally keeps ALL occurrences so duplicate problems can be
+          # compared before anything is moved.
+          candidates = []
 
           for readme in ROOT.rglob('README.md'):
-              if str(readme).startswith('.git/') or readme == ROOT / 'README.md':
+              if '.git' in readme.parts or readme == ROOT / 'README.md':
                   continue
               meta = metadata_from_readme(readme)
               if not meta:
                   continue
-              contest, idx, name, rating, topics = meta
-              if not rating:
-                  continue
               source = readme.parent
-              problems[f'{contest}/{idx}'] = (source, contest, idx, name, int(rating), topics)
+              candidates.append({
+                  **meta,
+                  'source': source,
+                  'is_dir': True,
+                  'last_change': git_last_change(source),
+              })
 
-          # Handle malformed CFPusher entries where a solution exists directly as a file
-          # under a numeric contest directory and has no README.
+          # Handle malformed CFPusher entries where the solution is directly a file
+          # under a numeric contest directory and there is no README.
           for contest_dir in ROOT.iterdir():
               if not contest_dir.is_dir() or not contest_dir.name.isdigit():
                   continue
@@ -108,7 +146,7 @@ jobs:
               for item in contest_dir.iterdir():
                   if not item.is_file() or item.name == 'README.md':
                       continue
-                  m = re.match(r'^([A-Za-z][A-Za-z0-9]*)\s*-\s*(.+)$', item.name)
+                  m = re.match(r'^([A-Za-z][A-Za-z0-9]*)\\s*-\\s*(.+)$', item.name)
                   if not m:
                       continue
                   idx, fallback_name = m.group(1), m.group(2)
@@ -116,48 +154,78 @@ jobs:
                   api = cf.get(key)
                   if not api:
                       continue
-                  problems.setdefault(key, (item, contest, idx, api.get('name') or fallback_name,
-                                            int(api.get('rating') or 0), api.get('tags', [])))
+                  candidates.append({
+                      'key': key,
+                      'contest': contest,
+                      'index': idx,
+                      'name': api.get('name') or fallback_name,
+                      'rating': int(api['rating']) if api.get('rating') else None,
+                      'topics': sorted(set(api.get('tags', []))),
+                      'source': item,
+                      'is_dir': False,
+                      'last_change': git_last_change(item),
+                  })
+
+          # If the same exact Codeforces problem appears more than once, keep the
+          # newest copy and remove the older copy/copies from the working tree.
+          # This removes duplicate folders/files from the repository, not historical
+          # Git commits. Git history remains intact.
+          grouped = defaultdict(list)
+          for c in candidates:
+              identity = (
+                  c['contest'],
+                  c['index'].lower(),
+                  re.sub(r'\\s+', ' ', c['name']).strip().casefold(),
+              )
+              grouped[identity].append(c)
+
+          winners = []
+          duplicate_count = 0
+          for identity, copies in grouped.items():
+              copies.sort(key=lambda c: (c['last_change'], str(c['source'])), reverse=True)
+              winner = copies[0]
+              winners.append(winner)
+              for duplicate in copies[1:]:
+                  src = duplicate['source']
+                  if src.is_dir():
+                      shutil.rmtree(src)
+                  elif src.exists():
+                      src.unlink()
+                  duplicate_count += 1
 
           moved = 0
-          for key, (source, contest, idx, name, rating, topics) in sorted(problems.items()):
-              if not rating:
-                  continue
-              destination = ROOT / str(rating) / f'{contest}{idx} - {name}'
-              destination.mkdir(parents=True, exist_ok=True)
 
+          for item in sorted(winners, key=lambda c: (c['rating'] is None, c['rating'] or 0, c['contest'], c['index'])):
+              rating = item['rating']
+              bucket = str(rating) if rating is not None else 'unrated'
+              destination = ROOT / bucket / f"{item['contest']}{item['index']} - {item['name']}"
+              destination.parent.mkdir(parents=True, exist_ok=True)
+
+              source = item['source']
               try:
                   if source.resolve() == destination.resolve():
                       continue
               except FileNotFoundError:
-                  pass
+                  continue
+
+              if destination.exists():
+                  # A duplicate can already exist at the destination. The candidate
+                  # selection above normally prevents this, but this guard keeps the
+                  # workflow safe when a previous run left a partial copy behind.
+                  if destination.is_dir():
+                      shutil.rmtree(destination)
+                  else:
+                      destination.unlink()
 
               if source.is_dir():
-                  for child in list(source.iterdir()):
-                      target = destination / child.name
-                      if child.is_dir():
-                          if target.exists():
-                              shutil.rmtree(target)
-                          shutil.copytree(child, target)
-                          shutil.rmtree(child)
-                      else:
-                          if target.exists():
-                              target.unlink()
-                          shutil.copy2(child, target)
-                          child.unlink()
-                  try:
-                      source.rmdir()
-                  except OSError:
-                      pass
+                  shutil.move(str(source), str(destination))
               else:
-                  target = destination / ('solution.cpp' if source.suffix == '' else source.name)
-                  if target.exists():
-                      target.unlink()
-                  shutil.copy2(source, target)
-                  source.unlink()
+                  destination.mkdir(parents=True, exist_ok=True)
+                  target = destination / 'solution.cpp'
+                  shutil.move(str(source), str(target))
               moved += 1
 
-          # Remove empty contest directories left by CFPusher.
+          # Remove empty numeric CFPusher contest directories left after moves.
           for p in sorted(ROOT.iterdir(), key=lambda x: len(x.parts), reverse=True):
               if p.is_dir() and p.name.isdigit():
                   try:
@@ -165,31 +233,54 @@ jobs:
                   except StopIteration:
                       p.rmdir()
 
+          # Discover the final canonical set from rating/unrated folders.
           entries = []
-          for rating_dir in ROOT.iterdir():
-              if not rating_dir.is_dir() or not rating_dir.name.isdigit():
+          for bucket_dir in ROOT.iterdir():
+              if not bucket_dir.is_dir() or not (bucket_dir.name.isdigit() or bucket_dir.name == 'unrated'):
                   continue
-              rating = int(rating_dir.name)
-              for problem_dir in rating_dir.iterdir():
+
+              rating = None if bucket_dir.name == 'unrated' else int(bucket_dir.name)
+              for problem_dir in bucket_dir.iterdir():
                   if not problem_dir.is_dir():
                       continue
+
                   m = folder_re.match(problem_dir.name)
                   solution = problem_dir / 'solution.cpp'
                   if not m or not solution.exists():
                       continue
+
                   contest, idx, fallback_name = m.group(1), m.group(2), m.group(3)
-                  topics = []
                   actual_name = fallback_name
+                  topics = []
                   readme = problem_dir / 'README.md'
+
                   if readme.exists():
                       meta = metadata_from_readme(readme)
                       if meta:
-                          _, _, actual_name, _, topics = meta
+                          actual_name = meta['name']
+                          topics = meta['topics']
+                          if meta['rating'] is not None:
+                              rating = meta['rating']
+
                   api = cf.get(f'{contest}/{idx}')
                   if api:
                       actual_name = api.get('name') or actual_name
-                      if not topics:
-                          topics = api.get('tags', [])
+                      topics = sorted(set(topics or api.get('tags', [])))
+                      if api.get('rating') is not None:
+                          rating = int(api['rating'])
+                      elif not api.get('rating'):
+                          rating = None
+
+                  # If the current folder is wrong, relocate it now using authoritative metadata.
+                  correct_bucket = str(rating) if rating is not None else 'unrated'
+                  correct_destination = ROOT / correct_bucket / f'{contest}{idx} - {actual_name}'
+                  if problem_dir.resolve() != correct_destination.resolve():
+                      correct_destination.parent.mkdir(parents=True, exist_ok=True)
+                      if correct_destination.exists():
+                          shutil.rmtree(correct_destination) if correct_destination.is_dir() else correct_destination.unlink()
+                      shutil.move(str(problem_dir), str(correct_destination))
+                      problem_dir = correct_destination
+
                   entries.append({
                       'rating': rating,
                       'contest': int(contest),
@@ -199,22 +290,53 @@ jobs:
                       'dir': problem_dir,
                   })
 
-          entries.sort(key=lambda e: (e['rating'], e['contest'], e['index']))
-          topic_counts = Counter(t for e in entries for t in e['topics'])
-          rating_counts = Counter(e['rating'] for e in entries)
+          # Final duplicate safety pass after any relocations.
+          final_groups = defaultdict(list)
+          for e in entries:
+              identity = (
+                  e['contest'],
+                  e['index'].lower(),
+                  re.sub(r'\\s+', ' ', e['name']).strip().casefold(),
+              )
+              final_groups[identity].append(e)
 
+          deduped = []
+          final_duplicate_count = 0
+          for identity, copies in final_groups.items():
+              if len(copies) == 1:
+                  deduped.append(copies[0])
+                  continue
+              copies.sort(key=lambda e: (git_last_change(e['dir']), str(e['dir'])), reverse=True)
+              deduped.append(copies[0])
+              for duplicate in copies[1:]:
+                  if duplicate['dir'].exists():
+                      shutil.rmtree(duplicate['dir'])
+                      final_duplicate_count += 1
+
+          entries = sorted(
+              deduped,
+              key=lambda e: (e['rating'] is None, e['rating'] or 0, e['contest'], e['index'])
+          )
+
+          topic_counts = Counter(t for e in entries for t in e['topics'])
+          rating_counts = Counter(e['rating'] for e in entries if e['rating'] is not None)
+          unrated_count = sum(e['rating'] is None for e in entries)
+
+          # README generated from the canonical final repository state.
           lines = [
               '# Codeforces Solutions',
               '',
               '> **Veer Patel**',
               '',
-              'Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; GitHub Actions handles organization and statistics.',
+              'Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; GitHub Actions handles organization, deduplication, unrated handling, and statistics.',
               '',
               '## 📊 Stats',
               '',
               '| Metric | Count |',
               '|---|---:|',
               f'| Total Solved | {len(entries)} |',
+              f'| Rated Problems | {sum(rating_counts.values())} |',
+              f'| Unrated Problems | {unrated_count} |',
               f'| Topics Covered | {len(topic_counts)} |',
               '',
               '## ⭐ Rating Breakdown',
@@ -222,21 +344,29 @@ jobs:
               '| Rating | Problems |',
               '|---:|---:|',
           ]
+
           for r in sorted(rating_counts):
               lines.append(f'| {r} | {rating_counts[r]} |')
+          lines.append(f'| Unrated | {unrated_count} |')
 
           lines += ['', '## 🏷️ Topics', '', '| Topic | Problems |', '|---|---:|']
           for topic, count in sorted(topic_counts.items(), key=lambda x: (-x[1], x[0])):
               lines.append(f'| {topic} | {count} |')
 
           lines += ['', '## 🧩 Problems', '']
-          by_rating = defaultdict(list)
+          by_bucket = defaultdict(list)
           for e in entries:
-              by_rating[e['rating']].append(e)
+              by_bucket['unrated' if e['rating'] is None else str(e['rating'])].append(e)
 
-          for rating in sorted(by_rating):
-              lines += [f'### {rating}', '', '| Problem | Topics | Solution |', '|---|---|---|']
-              for e in by_rating[rating]:
+          bucket_keys = sorted(
+              by_bucket,
+              key=lambda b: (b == 'unrated', int(b) if b.isdigit() else 10**9)
+          )
+
+          for bucket in bucket_keys:
+              heading = 'Unrated' if bucket == 'unrated' else bucket
+              lines += [f'### {heading}', '', '| Problem | Topics | Solution |', '|---|---|---|']
+              for e in sorted(by_bucket[bucket], key=lambda x: (x['contest'], x['index'])):
                   rel_solution = (e['dir'] / 'solution.cpp').relative_to(ROOT).as_posix()
                   rel_readme = (e['dir'] / 'README.md').relative_to(ROOT).as_posix()
                   sol_url = urllib.parse.quote(rel_solution, safe='/')
@@ -245,12 +375,24 @@ jobs:
                   title = f'{e["contest"]}{e["index"]} — {e["name"]}'
                   topic_text = ', '.join(e['topics']) if e['topics'] else '—'
                   readme_link = f'[problem README]({readme_url})' if (e['dir'] / 'README.md').exists() else '—'
-                  lines.append(f'| [{title}]({cf_url}) | {topic_text} | [solution]({sol_url}) · {readme_link} |')
+                  lines.append(
+                      f'| [{title}]({cf_url}) | {topic_text} | [solution]({sol_url}) · {readme_link} |'
+                  )
               lines.append('')
 
-          lines += ['---', '', '_Updated automatically by GitHub Actions._', '']
-          (ROOT / 'README.md').write_text('\n'.join(lines), encoding='utf-8')
-          print(f'Found {len(entries)} problems; moved/merged {moved} source entries.')
+          lines += [
+              '---',
+              '',
+              f'_Updated automatically by GitHub Actions. Duplicates removed: {duplicate_count + final_duplicate_count}._',
+              '',
+          ]
+
+          (ROOT / 'README.md').write_text('\\n'.join(lines), encoding='utf-8')
+          print(
+              f'Found {len(candidates)} source entries; '
+              f'removed {duplicate_count + final_duplicate_count} duplicates; '
+              f'moved {moved} entries; final problems: {len(entries)}; unrated: {unrated_count}.'
+          )
           PY
 
       - name: Commit organization changes
