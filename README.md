@@ -8,8 +8,8 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 
 | Metric | Count |
 |---|---:|
-| Total Solved | 45 |
-| Rated Problems | 43 |
+| Total Solved | 46 |
+| Rated Problems | 44 |
 | Unrated Problems | 2 |
 | Topics Covered | 13 |
 
@@ -17,7 +17,7 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 
 | Rating | Problems |
 |---:|---:|
-| 800 | 38 |
+| 800 | 39 |
 | 900 | 5 |
 | Unrated | 2 |
 
@@ -25,8 +25,8 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 
 | Topic | Problems |
 |---|---:|
-| implementation | 24 |
-| math | 11 |
+| implementation | 25 |
+| math | 12 |
 | strings | 10 |
 | brute force | 9 |
 | greedy | 9 |
@@ -62,6 +62,7 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 | [282A — Bit++](https://codeforces.com/contest/282/problem/A) | implementation | [solution](800/282A%20-%20Bit%2B%2B/solution.cpp) | [README](800/282A%20-%20Bit%2B%2B/README.md) |
 | [339A — Helpful Maths](https://codeforces.com/contest/339/problem/A) | greedy, implementation, sortings, strings | [solution](800/339A%20-%20Helpful%20Maths/solution.cpp) | [README](800/339A%20-%20Helpful%20Maths/README.md) |
 | [467A — George and Accommodation](https://codeforces.com/contest/467/problem/A) | implementation | [solution](800/467A%20-%20George%20and%20Accommodation/solution.cpp) | [README](800/467A%20-%20George%20and%20Accommodation/README.md) |
+| [486A — Calculating Function](https://codeforces.com/contest/486/problem/A) | implementation, math | [solution](800/486A%20-%20Calculating%20Function/solution.cpp) | [README](800/486A%20-%20Calculating%20Function/README.md) |
 | [546A — Soldier and Bananas](https://codeforces.com/contest/546/problem/A) | brute force, implementation, math | [solution](800/546A%20-%20Soldier%20and%20Bananas/solution.cpp) | [README](800/546A%20-%20Soldier%20and%20Bananas/README.md) |
 | [617A — Elephant](https://codeforces.com/contest/617/problem/A) | math | [solution](800/617A%20-%20Elephant/solution.cpp) | [README](800/617A%20-%20Elephant/README.md) |
 | [677A — Vanya and Fence](https://codeforces.com/contest/677/problem/A) | implementation | [solution](800/677A%20-%20Vanya%20and%20Fence/solution.cpp) | [README](800/677A%20-%20Vanya%20and%20Fence/README.md) |
@@ -103,4 +104,4 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 
 ---
 
-_Updated automatically by GitHub Actions. Duplicates removed this run: 1._
+_Updated automatically by GitHub Actions. Duplicates removed this run: 0._
