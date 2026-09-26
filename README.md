@@ -9,25 +9,25 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 | Metric | Count |
 |---|---:|
 | Total Solved | 50 |
-| Rated Problems | 44 |
-| Unrated Problems | 6 |
+| Rated Problems | 49 |
+| Unrated Problems | 1 |
 | Topics Covered | 13 |
 
 ## ⭐ Rating Breakdown
 
 | Rating | Problems |
 |---:|---:|
-| 800 | 38 |
-| 900 | 4 |
+| 800 | 41 |
+| 900 | 6 |
 | 1000 | 2 |
-| Unrated | 6 |
+| Unrated | 1 |
 
 ## 🏷️ Topics
 
 | Topic | Problems |
 |---|---:|
 | implementation | 26 |
-| math | 14 |
+| math | 13 |
 | strings | 11 |
 | brute force | 10 |
 | greedy | 9 |
@@ -84,6 +84,9 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 | [1900A — Cover in Water](https://codeforces.com/contest/1900/problem/A) | constructive algorithms, greedy, implementation, strings | [solution](800/1900A%20-%20Cover%20in%20Water/solution.cpp) | [README](800/1900A%20-%20Cover%20in%20Water/README.md) |
 | [1901A — Line Trip](https://codeforces.com/contest/1901/problem/A) | greedy, math | [solution](800/1901A%20-%20Line%20Trip/solution.cpp) | [README](800/1901A%20-%20Line%20Trip/README.md) |
 | [1903A — Halloumi Boxes](https://codeforces.com/contest/1903/problem/A) | brute force, greedy, sortings | [solution](800/1903A%20-%20Halloumi%20Boxes/solution.cpp) | [README](800/1903A%20-%20Halloumi%20Boxes/README.md) |
+| [2259A — Moo Language School](https://codeforces.com/contest/2259/problem/A) | brute force, greedy, two pointers | [solution](800/2259A%20-%20Moo%20Language%20School/solution.cpp) | [README](800/2259A%20-%20Moo%20Language%20School/README.md) |
+| [2259B — Minus Two](https://codeforces.com/contest/2259/problem/B) | math, number theory | [solution](800/2259B%20-%20Minus%20Two/solution.cpp) | [README](800/2259B%20-%20Minus%20Two/README.md) |
+| [2260A — Monocarp's Contest](https://codeforces.com/contest/2260/problem/A) | implementation | [solution](800/2260A%20-%20Monocarp%27s%20Contest/solution.cpp) | [README](800/2260A%20-%20Monocarp%27s%20Contest/README.md) |
 
 ### 900
 
@@ -93,6 +96,8 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 | [1878C — Vasilije in Cacak](https://codeforces.com/contest/1878/problem/C) | math | [solution](900/1878C%20-%20Vasilije%20in%20Cacak/solution.cpp) | [README](900/1878C%20-%20Vasilije%20in%20Cacak/README.md) |
 | [1883B — Chemistry](https://codeforces.com/contest/1883/problem/B) | strings | [solution](900/1883B%20-%20Chemistry/solution.cpp) | [README](900/1883B%20-%20Chemistry/README.md) |
 | [1904A — Forked!](https://codeforces.com/contest/1904/problem/A) | brute force, implementation | [solution](900/1904A%20-%20Forked%21/solution.cpp) | [README](900/1904A%20-%20Forked%21/README.md) |
+| [2246B — ezraft and Array](https://codeforces.com/contest/2246/problem/B) | constructive algorithms, number theory | [solution](900/2246B%20-%20ezraft%20and%20Array/solution.cpp) | [README](900/2246B%20-%20ezraft%20and%20Array/README.md) |
+| [2260B — Monocarp and Projects](https://codeforces.com/contest/2260/problem/B) | brute force, math, number theory | [solution](900/2260B%20-%20Monocarp%20and%20Projects/solution.cpp) | [README](900/2260B%20-%20Monocarp%20and%20Projects/README.md) |
 
 ### 1000
 
@@ -105,13 +110,8 @@ Automatically organized by Codeforces rating. Solutions are pushed by CFPusher; 
 
 | Problem | Topics | Solution | Problem README |
 |---|---|---|---|
-| [2246B — ezraft and Array](https://codeforces.com/contest/2246/problem/B) | constructive algorithms, number theory | [solution](unrated/2246B%20-%20ezraft%20and%20Array/solution.cpp) | [README](unrated/2246B%20-%20ezraft%20and%20Array/README.md) |
-| [2258A — Odd Eraser](https://codeforces.com/contest/2258/problem/A) | math | [solution](unrated/2258A%20-%20Odd%20Eraser/solution.cpp) | — |
-| [2259A — Moo Language School](https://codeforces.com/contest/2259/problem/A) | brute force, greedy, two pointers | [solution](unrated/2259A%20-%20Moo%20Language%20School/solution.cpp) | [README](unrated/2259A%20-%20Moo%20Language%20School/README.md) |
-| [2259B — Minus Two](https://codeforces.com/contest/2259/problem/B) | math, number theory | [solution](unrated/2259B%20-%20Minus%20Two/solution.cpp) | [README](unrated/2259B%20-%20Minus%20Two/README.md) |
-| [2260A — Monocarp's Contest](https://codeforces.com/contest/2260/problem/A) | implementation | [solution](unrated/2260A%20-%20Monocarp%27s%20Contest/solution.cpp) | [README](unrated/2260A%20-%20Monocarp%27s%20Contest/README.md) |
-| [2260B — Monocarp and Projects](https://codeforces.com/contest/2260/problem/B) | brute force, math, number theory | [solution](unrated/2260B%20-%20Monocarp%20and%20Projects/solution.cpp) | [README](unrated/2260B%20-%20Monocarp%20and%20Projects/README.md) |
+| [2269A — SauSaGe Bank](https://codeforces.com/contest/2269/problem/A) | — | [solution](unrated/2269A%20-%20SauSaGe%20Bank/solution.cpp) | [README](unrated/2269A%20-%20SauSaGe%20Bank/README.md) |
 
 ---
 
-_Updated automatically by GitHub Actions. Duplicates removed this run: 1._
+_Updated automatically by GitHub Actions. Duplicates removed this run: 0._
